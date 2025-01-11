@@ -1,5 +1,6 @@
-# Laravel Project Setup Script
-# About the Author
+# 📑📁 Laravel Project Setup Script 
+
+# 😊 About the Author
 
 <div style="text-align: center;">
   <img src="https://avatars.githubusercontent.com/u/64635889?v=4" alt="Author's Picture" style="border-radius: 50%; width: 150px; height: 150px;">
@@ -11,7 +12,7 @@ A passionate and experienced **backend Developer PHP** with over 5 years of expe
 
 ---
 
-### Specializations
+### 🧩 Specializations
 - Laravel Framework  
 - Clean Code and SOLID Principles  
 - Scalable and maintainable web applications  
