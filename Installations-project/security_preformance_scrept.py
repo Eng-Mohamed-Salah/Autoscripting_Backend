@@ -54,6 +54,21 @@ def modify_file(file_path):
         $this->configureModels();
         $this->configureCommands();
 
+        // Stop Lazy Collection Solved Performance Issue N+1 Query
+
+          // Must Be To Add This Attrbute in Model 
+           // public $preventsLazyLoading = true;
+
+
+          // Prevent Lazy Loading in Local And Production 
+          Model::preventLazyLoading();
+
+          // Prevent Lazy Loading for All enviroments except production 
+          Model:preventLazyLoading(!$this->app->isProduction());
+
+          // Prevent Lazy Loading for Production Only 
+          Model::preventLazyLoading($this->app->isProduction());
+
         \\Illuminate\\Pagination\\Paginator::useBootstrapFour();
     }
 

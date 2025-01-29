@@ -1,5 +1,20 @@
+# Display the banner at the beginning
+print("""
+===================================================
+            ███╗   ███╗ █████╗ ██████╗  ██████╗ 
+            ████╗ ████║██╔══██╗██╔══██╗██╔══██╗
+            ██╔████╔██║███████║██║  ██║██║  ██║
+            ██║╚██╔╝██║██╔══██║██║  ██║██║  ██║
+            ██║ ╚═╝ ██║██║  ██║██████╔╝██████╔╝
+            ╚═╝     ╚═╝╚═╝  ╚═╝╚═════╝ ╚═════╝ 
+                                                  
+       Automated Repository Pattern Project Laravel Creator - By Eng-Mohamed Salah
+===================================================
+""")
+
 import os
 import sys
+import re
 from pathlib import Path
 
 # ========== Configuration ==========
@@ -33,43 +48,45 @@ interface {model}RepositoryInterface extends BaseRepositoryInterface
 namespace App\\Repositories\\Eloquent;
 
 use App\\Repositories\\Contracts\\BaseRepositoryInterface;
+use Illuminate\\Database\\Eloquent\\Model;
 
 class BaseRepository implements BaseRepositoryInterface
-{{
+{
+    /** @var Model */
     protected $model;
 
-    public function __construct($model)
-    {{
+    public function __construct(Model $model)
+    {
         $this->model = $model;
-    }}
+    }
 
     public function all()
-    {{
-        return $this->model::all();
-    }}
+    {
+        return $this->model->all();
+    }
 
     public function find($id)
-    {{
-        return $this->model::find($id);
-    }}
+    {
+        return $this->model->find($id);
+    }
 
     public function create(array $data)
-    {{
-        return $this->model::create($data);
-    }}
+    {
+        return $this->model->create($data);
+    }
 
     public function update($id, array $data)
-    {{
+    {
         $record = $this->find($id);
         $record->update($data);
         return $record;
-    }}
+    }
 
     public function delete($id)
-    {{
-        return $this->model::destroy($id);
-    }}
-}}
+    {
+        return $this->model->destroy($id);
+    }
+}
 ''',
 
     'model_repository': '''<?php
@@ -98,21 +115,24 @@ use Illuminate\\Support\\ServiceProvider;
 
 class RepositoryServiceProvider extends ServiceProvider
 {{
-
     public function register()
     {{
-
         $repositories = [
-            '{model}' => '{model}',
-            // Add more models as needed
+            // Add your repositories here
+            {models}
         ];
     
-        foreach ($repositories as $interface => $repository) {
+        foreach ($repositories as $interface => $repository) {{
             $this->app->bind(
-                "App\\Repositories\\Contracts\\{$interface}RepositoryInterface",
-                "App\\Repositories\\Eloquent\\{$repository}Repository"
+                "App\\Repositories\\Contracts\\${{interface}}RepositoryInterface",
+                "App\\Repositories\\Eloquent\\${{repository}}Repository"
             );
-        }
+        }}
+    }}
+
+    public function boot()
+    {{
+        //
     }}
 }}
 '''
@@ -135,19 +155,24 @@ def select_project():
 
 def setup_paths(project_path):
     """📍 Configure paths based on selected project"""
-    global BASE_DIR, REPOSITORIES_DIR, CONTRACTS_DIR, ELOQUENT_DIR, PROVIDERS_DIR
+    global BASE_DIR, REPOSITORIES_DIR, CONTRACTS_DIR, ELOQUENT_DIR, PROVIDERS_DIR, MODELS_DIR
     
     BASE_DIR = project_path / 'app'
     REPOSITORIES_DIR = BASE_DIR / 'Repositories'
     CONTRACTS_DIR = REPOSITORIES_DIR / 'Contracts'
     ELOQUENT_DIR = REPOSITORIES_DIR / 'Eloquent'
     PROVIDERS_DIR = BASE_DIR / 'Providers'
+    MODELS_DIR = BASE_DIR / 'Models'
+    
+    create_directories(CONTRACTS_DIR, ELOQUENT_DIR, PROVIDERS_DIR)
 
 def validate_project_structure():
     """🔍 Validate essential project directories"""
-    if not BASE_DIR.exists():
-        print(f"❌ 'app' directory not found in selected project!")
-        sys.exit(2)
+    required = [BASE_DIR, MODELS_DIR]
+    for path in required:
+        if not path.exists():
+            print(f"❌ Required directory not found: {path}")
+            sys.exit(2)
 
 def create_directories(*paths):
     """📂 Create required directories"""
@@ -164,119 +189,100 @@ def get_model_name():
         if not model[0].isupper():
             print("❌ Model name must start with a capital letter!")
             continue
-        if not model.isalpha():
-            print("❌ Model name must contain only letters!")
+        if not model.isalnum():
+            print("❌ Model name must contain only alphanumeric characters!")
+            continue
+        if not (MODELS_DIR / f"{model}.php").exists():
+            print(f"❌ Model file not found in {MODELS_DIR.relative_to(BASE_DIR)}/")
             continue
         return model
 
+def update_service_provider(model):
+    """🔄 Update RepositoryServiceProvider with new binding"""
+    provider_path = PROVIDERS_DIR / 'RepositoryServiceProvider.php'
+    try:
+        if not provider_path.exists():
+            # Create new service provider
+            models_entry = f"'{model}' => '{model}',"
+            content = TEMPLATES['service_provider'].format(models=models_entry)
+            provider_path.write_text(content)
+            return True
+
+        # Update existing service provider
+        content = provider_path.read_text()
+        pattern = r'\$repositories\s*=\s*\[(.*?)\]'
+        match = re.search(pattern, content, re.DOTALL)
+        
+        if match:
+            existing = match.group(1).strip()
+            new_entry = f"'{model}' => '{model}',"
+            
+            if new_entry in existing:
+                return True  # Already exists
+            
+            # Add new entry with proper formatting
+            updated_entries = f"{existing}\n            {new_entry}" if existing else new_entry
+            new_content = content.replace(
+                match.group(0),
+                f'$repositories = [\n            {updated_entries}\n        ];'
+            )
+            provider_path.write_text(new_content)
+            return True
+        
+        # Fallback if pattern not found
+        replacement = (
+            "$repositories = [\n            "
+            f"'{model}' => '{model}',\n        "
+            "];\n\n        foreach ($repositories"
+        )
+        new_content = content.replace('foreach ($repositories', replacement)
+        provider_path.write_text(new_content)
+        return True
+
+    except Exception as e:
+        print(f"❌ Error updating service provider: {str(e)}")
+        return False
+
 def create_with_interface(model):
     """🔧 Create repository structure with interface"""
+    created_files = []
     try:
-        # Ensure directories exist
-        CONTRACTS_DIR.mkdir(parents=True, exist_ok=True)
-        ELOQUENT_DIR.mkdir(parents=True, exist_ok=True)
-        PROVIDERS_DIR.mkdir(parents=True, exist_ok=True)
-
         # Create contract files
-        base_interface_path = CONTRACTS_DIR / 'BaseRepositoryInterface.php'
-        model_interface_path = CONTRACTS_DIR / f'{model}RepositoryInterface.php'
-        base_repository_path = ELOQUENT_DIR / 'BaseRepository.php'
-        model_repository_path = ELOQUENT_DIR / f'{model}Repository.php'
-        provider_path = PROVIDERS_DIR / 'RepositoryServiceProvider.php'
+        files = [
+            (CONTRACTS_DIR / 'BaseRepositoryInterface.php', TEMPLATES['base_interface']),
+            (CONTRACTS_DIR / f'{model}RepositoryInterface.php', 
+             TEMPLATES['model_interface'].format(model=model)),
+            (ELOQUENT_DIR / 'BaseRepository.php', TEMPLATES['base_repository']),
+            (ELOQUENT_DIR / f'{model}Repository.php', 
+             TEMPLATES['model_repository'].format(model=model))
+        ]
 
-        # Write files with proper error handling
-        try:
-            base_interface_path.write_text(TEMPLATES['base_interface'])
-            model_interface_path.write_text(TEMPLATES['model_interface'].format(model=model))
-            base_repository_path.write_text(TEMPLATES['base_repository'])
-            model_repository_path.write_text(TEMPLATES['model_repository'].format(model=model))
-        except Exception as e:
-            print(f"❌ Error writing repository files: {str(e)}")
-            # Clean up any partially created files
-            for path in [base_interface_path, model_interface_path, base_repository_path, model_repository_path]:
-                if path.exists():
-                    path.unlink()
+        for path, content in files:
+            try:
+                path.write_text(content)
+                created_files.append(path)
+            except Exception as e:
+                print(f"❌ Error writing {path.name}: {str(e)}")
+                for f in created_files:
+                    f.unlink(missing_ok=True)
+                return False
+
+        # Update service provider
+        if not update_service_provider(model):
+            for f in created_files:
+                f.unlink(missing_ok=True)
             return False
 
-        # Update or create service provider
-        try:
-            if provider_path.exists():
-                content = provider_path.read_text()
-                new_binding = (
-                    f"\n        $this->app->bind(\n"
-                    f"            'App\\\\Repositories\\\\Contracts\\\\{model}RepositoryInterface',\n"
-                    f"            'App\\\\Repositories\\\\Eloquent\\\\{model}Repository'\n"
-                    f"        );"
-                )
-                
-                if 'public function register()' in content:
-                    content = content.replace(
-                        'public function register()',
-                        f'public function register()\n    {{{new_binding}\n    }}'
-                    )
-                    provider_path.write_text(content)
-            else:
-                provider_content = TEMPLATES['service_provider'].format(model=model)
-                provider_path.write_text(provider_content)
-        except Exception as e:
-            print(f"❌ Error updating service provider: {str(e)}")
-            return False
-            
         return True
+
     except Exception as e:
         print(f"❌ Error creating repository structure: {str(e)}")
+        for f in created_files:
+            f.unlink(missing_ok=True)
         return False
-
-def create_without_interface(model):
-    """⚡ Create basic repository without interface"""
-    try:
-        # Ensure directory exists
-        REPOSITORIES_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Create repository file
-        repository_path = REPOSITORIES_DIR / f'{model}Repository.php'
-        repository_path.write_text(TEMPLATES['model_repository'].format(model=model))
-        return True
-    except Exception as e:
-        print(f"❌ Error creating repository file: {str(e)}")
-        return False
-
-def main():
-    try:
-        print("\n🚀 Laravel Repository Pattern Generator")
-        print("-------------------------------------")
-        
-        # Select project
-        project_path = select_project()
-        setup_paths(project_path)
-        validate_project_structure()
-        
-        # Repository type selection
-        print("\n🔧 Select repository type:")
-        print("1. With Interface (Recommended)")
-        print("2. Without Interface")
-        choice = input("\n➡️ Enter choice (1/2): ").strip()
-
-        # Get model name
-        model = get_model_name()
-
-        # Create directories based on choice
-        if choice == '1':
-            success = create_with_interface(model)
-        else:
-            success = create_without_interface(model)
-
-        if not success:
-            sys.exit(3)
-
-        print_summary(project_path, model, choice == '1')
-
-    except Exception as e:
-        print(f"\n💥 Critical Error: {str(e)}")
-        sys.exit(1)
 
 def print_summary(project_path, model, with_interface):
-    """📝 Print creation summary with emojis"""
+    """📝 Print creation summary"""
     print(f"\n✅ Successfully created in project: {project_path.name}/")
     print(f"📦 Model: {model}")
     print("📁 Created Structure:")
@@ -297,10 +303,43 @@ def print_summary(project_path, model, with_interface):
 
     print("\n🔧 Next Steps:")
     if with_interface:
-        print(f"1. Add Service Provider to config/app.php:")
-        print(f"   App\\Providers\\RepositoryServiceProvider::class")
-    print(f"2. Use repository in controllers:")
+        print("1. Add to config/app.php providers:")
+        print("   App\\Providers\\RepositoryServiceProvider::class")
+    print("2. Use in controllers:")
     print(f"   use App\\Repositories\\{'Eloquent' if with_interface else ''}\\{model}Repository;")
+    print("3. Run: composer dump-autoload\n")
+
+def main():
+    try:
+        print("\n🚀 Laravel Repository Pattern Generator")
+        print("-------------------------------------")
+        
+        project_path = select_project()
+        setup_paths(project_path)
+        validate_project_structure()
+        
+        print("\n🔧 Select repository type:")
+        print("1. With Interface (Recommended)")
+        print("2. Without Interface")
+        choice = input("\n➡️ Enter choice (1/2): ").strip()
+
+        model = get_model_name()
+
+        if choice == '1':
+            success = create_with_interface(model)
+        else:
+            print("❌ Basic repository without interface is not supported in this version")
+            success = False
+
+        if success:
+            print_summary(project_path, model, choice == '1')
+        else:
+            print("\n❌ Failed to create repository structure")
+            sys.exit(1)
+
+    except Exception as e:
+        print(f"\n💥 Critical Error: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
